@@ -1,25 +1,37 @@
+import pandas as pd
+
 def jaccard_similarity(profil_nama, nama_siakad):
-    # Langkah 1 : Memecah nama menjadi beberapa kata berdasarkan spasi
+    # Your existing jaccard_similarity function remains the same
     set1 = set(profil_nama.lower().split())
     set2 = set(nama_siakad.lower().split())
     
-    # Langkah 2 : Mengambil Intersection / Kata yang sama diantara 2 set / himpunan
     intersection = set1.intersection(set2)
-    
-    # Langkah 3 : Mengambil Union / Gabungan kata dari kedua set / himpunan
     union = set1.union(set2)
     
-    # Langkah 4 : Melakukan perhitungan jaccard
     similarity = len(intersection) / len(union)
     
     return similarity
 
-# Contoh Data
-profil_nama = "Yusufa Haidar"
-nama_siakad = "Yusufa Haidar"
+# Read the CSV file
+df = pd.read_csv('D:/POLINEMA/Skripsi/Similar&Crawl/polinema_alumni_20_01_2025_2004.csv')
 
-print(f"Himpunan Profil Nama: {set(profil_nama.lower().split())}")  
-print(f"Himpunan Nama Siakad: {set(nama_siakad.lower().split())}")  
-print(f"Intersection: {set(profil_nama.lower().split()).intersection(set(nama_siakad.lower().split()))}")  
-print(f"Union: {set(profil_nama.lower().split()).union(set(nama_siakad.lower().split()))}")  
-print(f"Similarity: {jaccard_similarity(profil_nama, nama_siakad)}") 
+# Example: Compare one profile name against all names in CSV
+profil_nama = "Yusufa Haidar"  # Your test name
+
+# Calculate similarity for each name in the CSV
+results = []
+for index, row in df.iterrows():
+    nama_siakad = row['name']
+    similarity = jaccard_similarity(profil_nama, nama_siakad)
+    results.append({
+        'nama_siakad': nama_siakad,
+        'similarity_score': similarity
+    })
+
+# Convert results to DataFrame for better viewing
+results_df = pd.DataFrame(results)
+# Sort by similarity score in descending order
+results_df = results_df.sort_values('similarity_score', ascending=False)
+
+print("Results for:", profil_nama)
+print(results_df)
