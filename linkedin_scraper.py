@@ -133,8 +133,8 @@ class LinkedInAlumniScraper:
     def save_results(self, filename=None):
         """Save results to CSV file"""
         if not filename:
-            timestamp = datetime.now().strftime('%d_%m_%Y_%H%M')
-            filename = f'polinema_alumni_{timestamp}.csv'
+            # timestamp = datetime.now().strftime('%d_%m_%Y_%H%M')
+            filename = f'polinema_alumni.csv'
             
         df = pd.DataFrame(self.results)
         df.to_csv(filename, index=False)

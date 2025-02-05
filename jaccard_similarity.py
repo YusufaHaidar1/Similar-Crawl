@@ -1,37 +1,49 @@
 import pandas as pd
 
-def jaccard_similarity(profil_nama, nama_siakad):
-    # Your existing jaccard_similarity function remains the same
-    set1 = set(profil_nama.lower().split())
-    set2 = set(nama_siakad.lower().split())
-    
-    intersection = set1.intersection(set2)
-    union = set1.union(set2)
-    
-    similarity = len(intersection) / len(union)
-    
-    return similarity
+df = pd.read_excel('siakad/tk 4 TI.xlsx', header=None)
+df2 = pd.read_csv('siakad/polinema_alumni.csv', header=None)
 
-# Read the CSV file
-df = pd.read_csv('D:/POLINEMA/Skripsi/Similar&Crawl/polinema_alumni_20_01_2025_2004.csv')
+if df.iloc[0, 0] == 'Nama Mahasiswa':
+    df.columns = df.iloc[0]  # Use the first row as the header
+    df = df[1:]  # Remove the first row after setting it as the header
 
-# Example: Compare one profile name against all names in CSV
-profil_nama = "Yusufa Haidar"  # Your test name
+nama = df['Nama Mahasiswa'].tolist()
+namaa = df2[0].tolist()
 
-# Calculate similarity for each name in the CSV
-results = []
-for index, row in df.iterrows():
-    nama_siakad = row['name']
-    similarity = jaccard_similarity(profil_nama, nama_siakad)
-    results.append({
-        'nama_siakad': nama_siakad,
-        'similarity_score': similarity
-    })
+def jaccard_similarity(nama, namaa):
+  threshold = 0.5
+  hasil = {}
+  for nama1 in nama:
+    nama_termirip = []
+    pekerjaan = []
+    tempat_kerja = []
 
-# Convert results to DataFrame for better viewing
-results_df = pd.DataFrame(results)
-# Sort by similarity score in descending order
-results_df = results_df.sort_values('similarity_score', ascending=False)
+    for i, nama2 in enumerate(namaa):
+      set1 = set(nama1)
+      set2 = set(nama2)
+      similarity = len(set1.intersection(set2)) / len(set1.union(set2))
 
-print("Results for:", profil_nama)
-print(results_df)
+      if similarity > threshold:
+        nama_termirip = nama2
+
+        if len(df2.columns) >= 3:
+          tempat_kerja = df2.iloc[i, 1] 
+          pekerjaan = df2.iloc[i, 2] 
+        hasil[nama1] = (nama_termirip, pekerjaan, tempat_kerja)
+  return hasil
+
+hasil = jaccard_similarity(nama, namaa)
+hasil_dict = dict(hasil)
+if 'Nama LinkedIn' in df.columns:
+  df['Nama LinkedIn'] = df['Nama Mahasiswa'].map(lambda x: hasil_dict.get(x, ("", "", ""))[0])
+  df['Pekerjaan'] = df['Nama Mahasiswa'].map(lambda x: hasil_dict.get(x, ("", "", ""))[1])
+  df['Tempat Kerja'] = df['Nama Mahasiswa'].map(lambda x: hasil_dict.get(x, ("", "", ""))[2])
+else : 
+  df['Nama LinkedIn'] = df['Nama Mahasiswa'].map(lambda x: hasil_dict.get(x, ("", "", ""))[0])
+  df['Pekerjaan'] = df['Nama Mahasiswa'].map(lambda x: hasil_dict.get(x, ("", "", ""))[1])
+  df['Tempat Kerja'] = df['Nama Mahasiswa'].map(lambda x: hasil_dict.get(x, ("", "", ""))[2])  
+
+# Set column headers if you want them
+if df.columns[0] != 'Nama Mahasiswa':
+    df.columns = ['Nama Mahasiswa', 'Nama LinkedIn', 'Pekerjaan', 'Tempat Kerja']
+df.to_excel('siakad/tk 4 TI.xlsx', index=False)
