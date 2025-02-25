@@ -1,0 +1,246 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jaccard Similarity Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="file"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: block;
+            margin: 20px auto;
+            width: 200px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result-section {
+            margin-top: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+        }
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            color: #ff0000;
+            font-weight: bold;
+            text-align: center;
+            margin: 15px 0;
+        }
+        .instructions {
+            background-color: #e9f7ef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Jaccard Similarity Tool</h1>
+        
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <p>1. Upload an Excel file containing student names with a column header "Nama Mahasiswa"</p>
+            <p>2. Upload a CSV file containing LinkedIn profiles (name in first column, workplace in second, job in third)</p>
+            <p>3. Set similarity threshold (0.5 is default)</p>
+            <p>4. Click "Run Similarity" to process the files</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="file1">Upload Student Excel File (.xlsx):</label>
+            <input type="file" id="file1" accept=".xlsx, .xls">
+        </div>
+        
+        <div class="form-group">
+            <label for="file2">Upload LinkedIn CSV File (.csv):</label>
+            <input type="file" id="file2" accept=".csv">
+        </div>
+        
+        <div class="form-group">
+            <label for="threshold">Similarity Threshold (0-1):</label>
+            <input type="number" id="threshold" min="0" max="1" step="0.1" value="0.5">
+        </div>
+        
+        <button id="submitBtn">Run Similarity</button>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing files, please wait...</p>
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="result-section" id="resultSection" style="display: none;">
+            <h2>Results:</h2>
+            <div id="tableContainer" style="max-height: 500px; overflow-y: auto;">
+                <table id="resultTable">
+                    <thead>
+                        <tr id="headerRow"></tr>
+                    </thead>
+                    <tbody id="resultBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('submitBtn').addEventListener('click', function() {
+            const file1 = document.getElementById('file1').files[0];
+            const file2 = document.getElementById('file2').files[0];
+            const threshold = document.getElementById('threshold').value;
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            const resultSection = document.getElementById('resultSection');
+            
+            // Reset
+            errorDiv.textContent = '';
+            resultSection.style.display = 'none';
+            
+            // Validate files
+            if (!file1 || !file2) {
+                errorDiv.textContent = 'Please upload both files';
+                return;
+            }
+            
+            // Show loading
+            loadingDiv.style.display = 'block';
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('file1', file1);
+            formData.append('file2', file2);
+            formData.append('threshold', threshold);
+            
+            // Send request
+            fetch('/process', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingDiv.style.display = 'none';
+                
+                if (data.error) {
+                    errorDiv.textContent = data.error;
+                    return;
+                }
+                
+                // Display results
+                displayResults(data.results, data.columns);
+                resultSection.style.display = 'block';
+            })
+            .catch(error => {
+                loadingDiv.style.display = 'none';
+                errorDiv.textContent = 'An error occurred: ' + error.message;
+            });
+        });
+        
+        function displayResults(results, columns) {
+            const headerRow = document.getElementById('headerRow');
+            const resultBody = document.getElementById('resultBody');
+            
+            // Clear previous results
+            headerRow.innerHTML = '';
+            resultBody.innerHTML = '';
+            
+            // Add headers
+            columns.forEach(column => {
+                const th = document.createElement('th');
+                th.textContent = column;
+                headerRow.appendChild(th);
+            });
+            
+            // Add data rows
+            results.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                columns.forEach(column => {
+                    const td = document.createElement('td');
+                    td.textContent = row[column] || '';
+                    tr.appendChild(td);
+                });
+                
+                resultBody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>
+        
