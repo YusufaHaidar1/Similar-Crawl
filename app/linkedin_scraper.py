@@ -1,6 +1,7 @@
 from linkedin_api import Linkedin
 import pandas as pd
 import time
+import os
 from datetime import datetime
 
 class LinkedInAlumniScraper:
@@ -142,17 +143,42 @@ class LinkedInAlumniScraper:
         print(f"Total alumni profiles collected: {len(self.results)}")
         return df
 
+def load_credentials(config_path='app/config/credentials.txt'):
+    """Load LinkedIn credentials from a config file"""
+    try:
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Credentials file not found at {config_path}")
+            
+        with open(config_path, 'r') as file:
+            lines = file.readlines()
+            if len(lines) < 2:
+                raise ValueError("Credentials file must contain email on first line and password on second line")
+                
+            email = lines[0].strip()
+            password = lines[1].strip()
+            
+            return email, password
+    except Exception as e:
+        print(f"Error loading credentials: {str(e)}")
+        return None, None
+    
 # Example usage
 if __name__ == "__main__":
-    # Initialize scraper
-    scraper = LinkedInAlumniScraper(
-        email="haidardewa@gmail.com",
-        password="malang1234"
-    )
+    # Load credentials from file
+    email, password = load_credentials()
     
-    # Start scraping (default limit is 100, can be changed)
-    scraper.scrape_alumni(limit=100)
-    
-    # Save results
-    df = scraper.save_results()
+    if email and password:
+        # Initialize scraper
+        scraper = LinkedInAlumniScraper(
+            email=email,
+            password=password
+        )
+        
+        # Start scraping (default limit is 100, can be changed)
+        scraper.scrape_alumni(limit=100)
+        
+        # Save results
+        df = scraper.save_results()
+    else:
+        print("Failed to load credentials. Please check your credentials file.")
 

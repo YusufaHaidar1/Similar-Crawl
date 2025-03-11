@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jaccard Similarity Tool</title>
+    <title>Alumni Tracking Tool</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -31,7 +30,7 @@
             margin-bottom: 5px;
             font-weight: bold;
         }
-        input[type="file"], input[type="number"] {
+        input[type="file"], input[type="number"], input[type="text"], input[type="password"] {
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
@@ -100,6 +99,12 @@
             text-align: center;
             margin: 15px 0;
         }
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+            text-align: center;
+            margin: 15px 0;
+        }
         .instructions {
             background-color: #e9f7ef;
             padding: 15px;
@@ -109,18 +114,66 @@
         .instructions h3 {
             margin-top: 0;
         }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: white;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .linkedin-data {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .linkedin-data h3 {
+            margin-top: 0;
+        }
+        .download-options {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .download-btn {
+            background-color: #2196F3;
+            width: auto;
+            margin: 0;
+        }
+        .download-btn:hover {
+            background-color: #0b7dda;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Jaccard Similarity Tool</h1>
+        <h1>Alumni Tracking Tool</h1>
         
         <div class="instructions">
             <h3>Instructions:</h3>
             <p>1. Upload an Excel file containing student names with a column header "Nama Mahasiswa"</p>
-            <p>2. Upload a CSV file containing LinkedIn profiles (name in first column, workplace in second, job in third)</p>
+            <p>2. Either scrape LinkedIn data directly using your credentials OR upload a CSV file with LinkedIn profiles</p>
             <p>3. Set similarity threshold (0.5 is default)</p>
-            <p>4. Click "Run Similarity" to process the files</p>
+            <p>4. Click "Run Similarity" to process and match alumni data</p>
         </div>
         
         <div class="form-group">
@@ -128,9 +181,40 @@
             <input type="file" id="file1" accept=".xlsx, .xls">
         </div>
         
-        <div class="form-group">
-            <label for="file2">Upload LinkedIn CSV File (.csv):</label>
-            <input type="file" id="file2" accept=".csv">
+        <div class="tabs">
+            <div class="tab active" data-tab="scrape">LinkedIn Scraper</div>
+            <div class="tab" data-tab="upload">Upload LinkedIn CSV</div>
+        </div>
+        
+        <div class="tab-content active" id="scrape-content">
+            <div class="form-group">
+                <label for="linkedin_email">LinkedIn Email:</label>
+                <input type="text" id="linkedin_email" placeholder="Enter your LinkedIn email">
+            </div>
+            
+            <div class="form-group">
+                <label for="linkedin_password">LinkedIn Password:</label>
+                <input type="password" id="linkedin_password" placeholder="Enter your LinkedIn password">
+            </div>
+            
+            <div class="form-group">
+                <label for="scrape_limit">Maximum Profiles to Scrape:</label>
+                <input type="number" id="scrape_limit" min="10" max="500" value="50">
+            </div>
+            
+            <button id="scrapeBtn">Scrape LinkedIn Data</button>
+            
+            <div class="linkedin-data" id="linkedinData" style="display: none;">
+                <h3>LinkedIn Data Status</h3>
+                <p id="linkedinStatus"></p>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="upload-content">
+            <div class="form-group">
+                <label for="file2">Upload LinkedIn CSV File (.csv):</label>
+                <input type="file" id="file2" accept=".csv">
+            </div>
         </div>
         
         <div class="form-group">
@@ -142,13 +226,18 @@
         
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p>Processing files, please wait...</p>
+            <p>Processing, please wait...</p>
         </div>
         
         <div class="error" id="error"></div>
+        <div class="success" id="success"></div>
         
         <div class="result-section" id="resultSection" style="display: none;">
             <h2>Results:</h2>
+            <div class="download-options">
+                <button id="downloadExcelBtn" class="download-btn">Download as Excel</button>
+                <button id="downloadCsvBtn" class="download-btn">Download as CSV</button>
+            </div>
             <div id="tableContainer" style="max-height: 500px; overflow-y: auto;">
                 <table id="resultTable">
                     <thead>
@@ -161,21 +250,43 @@
     </div>
     
     <script>
-        document.getElementById('submitBtn').addEventListener('click', function() {
-            const file1 = document.getElementById('file1').files[0];
-            const file2 = document.getElementById('file2').files[0];
-            const threshold = document.getElementById('threshold').value;
+        // Tab functionality
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Remove active class from all tabs
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                // Add active class to clicked tab
+                this.classList.add('active');
+                
+                // Hide all tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Show corresponding tab content
+                const tabId = this.getAttribute('data-tab');
+                document.getElementById(tabId + '-content').classList.add('active');
+            });
+        });
+        
+        // LinkedIn Scraper Button
+        document.getElementById('scrapeBtn').addEventListener('click', function() {
+            const email = document.getElementById('linkedin_email').value;
+            const password = document.getElementById('linkedin_password').value;
+            const limit = document.getElementById('scrape_limit').value;
             const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
             const loadingDiv = document.getElementById('loading');
-            const resultSection = document.getElementById('resultSection');
+            const linkedinData = document.getElementById('linkedinData');
+            const linkedinStatus = document.getElementById('linkedinStatus');
             
             // Reset
             errorDiv.textContent = '';
-            resultSection.style.display = 'none';
+            successDiv.textContent = '';
             
-            // Validate files
-            if (!file1 || !file2) {
-                errorDiv.textContent = 'Please upload both files';
+            // Validate inputs
+            if (!email || !password) {
+                errorDiv.textContent = 'Please enter your LinkedIn email and password';
                 return;
             }
             
@@ -184,12 +295,12 @@
             
             // Create form data
             const formData = new FormData();
-            formData.append('file1', file1);
-            formData.append('file2', file2);
-            formData.append('threshold', threshold);
+            formData.append('linkedin_email', email);
+            formData.append('linkedin_password', password);
+            formData.append('limit', limit);
             
-            // Send request
-            fetch('/process', {
+            // Send request to scrape LinkedIn
+            fetch('/scrape', {
                 method: 'POST',
                 body: formData
             })
@@ -202,15 +313,77 @@
                     return;
                 }
                 
-                // Display results
-                displayResults(data.results, data.columns);
-                resultSection.style.display = 'block';
+                // Show success message
+                successDiv.textContent = data.message;
+                
+                // Display LinkedIn data status
+                linkedinData.style.display = 'block';
+                linkedinStatus.textContent = `Successfully scraped ${data.data.length} LinkedIn profiles. Ready to process.`;
             })
             .catch(error => {
                 loadingDiv.style.display = 'none';
                 errorDiv.textContent = 'An error occurred: ' + error.message;
             });
         });
+        
+        // Process Button
+        document.getElementById('scrapeBtn').addEventListener('click', function() {
+    const email = document.getElementById('linkedin_email').value;
+    const password = document.getElementById('linkedin_password').value;
+    const limit = document.getElementById('scrape_limit').value;
+    const errorDiv = document.getElementById('error');
+    const successDiv = document.getElementById('success');
+    const loadingDiv = document.getElementById('loading');
+    const linkedinData = document.getElementById('linkedinData');
+    const linkedinStatus = document.getElementById('linkedinStatus');
+    
+    // Reset error and success messages
+    errorDiv.textContent = '';
+    successDiv.textContent = '';
+    
+    // Adjust form validation: If both fields are empty, rely on server-side credentials
+    if (!email && !password) {
+        console.log("No form credentials provided, using server-side credentials.");
+    } else if (!email || !password) {
+        errorDiv.textContent = 'Please enter both LinkedIn email and password';
+        return;
+    }
+    
+    // Show loading
+    loadingDiv.style.display = 'block';
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('linkedin_email', email);  // This will be empty if the form is not filled
+    formData.append('linkedin_password', password);  // Same here
+    formData.append('limit', limit);
+    
+    // Send request to scrape LinkedIn
+    fetch('/scrape', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingDiv.style.display = 'none';
+        
+        if (data.error) {
+            errorDiv.textContent = data.error;
+            return;
+        }
+        
+        // Show success message
+        successDiv.textContent = data.message;
+        
+        // Display LinkedIn data status
+        linkedinData.style.display = 'block';
+        linkedinStatus.textContent = `Successfully scraped ${data.data.length} LinkedIn profiles. Ready to process.`;
+    })
+    .catch(error => {
+        loadingDiv.style.display = 'none';
+        errorDiv.textContent = 'An error occurred: ' + error.message;
+    });
+});
         
         function displayResults(results, columns) {
             const headerRow = document.getElementById('headerRow');
@@ -240,7 +413,56 @@
                 resultBody.appendChild(tr);
             });
         }
+        
+        // Download buttons functionality
+        document.getElementById('downloadExcelBtn').addEventListener('click', function() {
+            downloadResults('excel');
+        });
+        
+        document.getElementById('downloadCsvBtn').addEventListener('click', function() {
+            downloadResults('csv');
+        });
+        
+        function downloadResults(format) {
+            // Get table data from the displayed results
+            const tableData = [];
+            const headers = [];
+            
+            // Get headers
+            document.querySelectorAll('#headerRow th').forEach(th => {
+                headers.push(th.textContent);
+            });
+            
+            // Get row data
+            document.querySelectorAll('#resultBody tr').forEach(tr => {
+                const rowData = {};
+                tr.querySelectorAll('td').forEach((td, index) => {
+                    rowData[headers[index]] = td.textContent;
+                });
+                tableData.push(rowData);
+            });
+            
+            if (tableData.length === 0) {
+                document.getElementById('error').textContent = 'No data to download';
+                return;
+            }
+            
+            // Create form to submit
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/download?format=' + format;
+            
+            // Add data as hidden input
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'results';
+            input.value = JSON.stringify(tableData);
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        }
     </script>
 </body>
 </html>
-        

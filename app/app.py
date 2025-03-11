@@ -1,7 +1,14 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, session
 import pandas as pd
 import io
 import os
+from linkedin_api import Linkedin
+import time
+from datetime import datetime
+import secrets
+
+# Import the LinkedIn scraper class
+from linkedin_scraper import LinkedInAlumniScraper
 
 # Determine the absolute path to the app directory
 app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,272 +20,86 @@ if not os.path.exists(templates_dir):
 
 # Create Flask app with the templates directory inside app folder
 app = Flask(__name__, template_folder=templates_dir)
+app.secret_key = secrets.token_hex(16)  # Required for session management
 
-# Write the template file
-template_path = os.path.join(templates_dir, 'index.html')
-with open(template_path, 'w') as f:
-    f.write('''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jaccard Similarity Tool</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input[type="file"], input[type="number"] {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            display: block;
-            margin: 20px auto;
-            width: 200px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        .result-section {
-            margin-top: 30px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 12px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-            position: sticky;
-            top: 0;
-        }
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        tr:hover {
-            background-color: #f1f1f1;
-        }
-        .loading {
-            text-align: center;
-            display: none;
-        }
-        .spinner {
-            border: 6px solid #f3f3f3;
-            border-top: 6px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 2s linear infinite;
-            margin: 20px auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .error {
-            color: #ff0000;
-            font-weight: bold;
-            text-align: center;
-            margin: 15px 0;
-        }
-        .instructions {
-            background-color: #e9f7ef;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .instructions h3 {
-            margin-top: 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Jaccard Similarity Tool</h1>
-        
-        <div class="instructions">
-            <h3>Instructions:</h3>
-            <p>1. Upload an Excel file containing student names with a column header "Nama Mahasiswa"</p>
-            <p>2. Upload a CSV file containing LinkedIn profiles (name in first column, workplace in second, job in third)</p>
-            <p>3. Set similarity threshold (0.5 is default)</p>
-            <p>4. Click "Run Similarity" to process the files</p>
-        </div>
-        
-        <div class="form-group">
-            <label for="file1">Upload Student Excel File (.xlsx):</label>
-            <input type="file" id="file1" accept=".xlsx, .xls">
-        </div>
-        
-        <div class="form-group">
-            <label for="file2">Upload LinkedIn CSV File (.csv):</label>
-            <input type="file" id="file2" accept=".csv">
-        </div>
-        
-        <div class="form-group">
-            <label for="threshold">Similarity Threshold (0-1):</label>
-            <input type="number" id="threshold" min="0" max="1" step="0.1" value="0.5">
-        </div>
-        
-        <button id="submitBtn">Run Similarity</button>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Processing files, please wait...</p>
-        </div>
-        
-        <div class="error" id="error"></div>
-        
-        <div class="result-section" id="resultSection" style="display: none;">
-            <h2>Results:</h2>
-            <div id="tableContainer" style="max-height: 500px; overflow-y: auto;">
-                <table id="resultTable">
-                    <thead>
-                        <tr id="headerRow"></tr>
-                    </thead>
-                    <tbody id="resultBody"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        document.getElementById('submitBtn').addEventListener('click', function() {
-            const file1 = document.getElementById('file1').files[0];
-            const file2 = document.getElementById('file2').files[0];
-            const threshold = document.getElementById('threshold').value;
-            const errorDiv = document.getElementById('error');
-            const loadingDiv = document.getElementById('loading');
-            const resultSection = document.getElementById('resultSection');
-            
-            // Reset
-            errorDiv.textContent = '';
-            resultSection.style.display = 'none';
-            
-            // Validate files
-            if (!file1 || !file2) {
-                errorDiv.textContent = 'Please upload both files';
-                return;
-            }
-            
-            // Show loading
-            loadingDiv.style.display = 'block';
-            
-            // Create form data
-            const formData = new FormData();
-            formData.append('file1', file1);
-            formData.append('file2', file2);
-            formData.append('threshold', threshold);
-            
-            // Send request
-            fetch('/process', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                loadingDiv.style.display = 'none';
-                
-                if (data.error) {
-                    errorDiv.textContent = data.error;
-                    return;
-                }
-                
-                // Display results
-                displayResults(data.results, data.columns);
-                resultSection.style.display = 'block';
-            })
-            .catch(error => {
-                loadingDiv.style.display = 'none';
-                errorDiv.textContent = 'An error occurred: ' + error.message;
-            });
-        });
-        
-        function displayResults(results, columns) {
-            const headerRow = document.getElementById('headerRow');
-            const resultBody = document.getElementById('resultBody');
-            
-            // Clear previous results
-            headerRow.innerHTML = '';
-            resultBody.innerHTML = '';
-            
-            // Add headers
-            columns.forEach(column => {
-                const th = document.createElement('th');
-                th.textContent = column;
-                headerRow.appendChild(th);
-            });
-            
-            // Add data rows
-            results.forEach(row => {
-                const tr = document.createElement('tr');
-                
-                columns.forEach(column => {
-                    const td = document.createElement('td');
-                    td.textContent = row[column] || '';
-                    tr.appendChild(td);
-                });
-                
-                resultBody.appendChild(tr);
-            });
-        }
-    </script>
-</body>
-</html>
-        ''')
-    
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/scrape', methods=['POST'])
+def scrape():
+    """Endpoint to handle LinkedIn scraping"""
+    try:
+        print("Scrape request received")
+
+        # Get search parameters
+        limit = int(request.form.get('limit', 50))
+        print(f"Scrape limit: {limit}")
+
+        # Check if form credentials were provided
+        form_email = request.form.get('linkedin_email')
+        form_password = request.form.get('linkedin_password')
+        
+        if form_email and form_password:
+            print("Using form credentials")
+            email = form_email
+            password = form_password
+        else:
+            print("Using credentials from file")
+            from linkedin_scraper import load_credentials
+            email, password = load_credentials()
+            
+            if not email or not password:
+                return jsonify({"error": "LinkedIn credentials not found. Please provide credentials in the form or create a credentials file."}), 400
+
+        print(f"Email: {email}, Password: {'*' * len(password)}")
+
+        # Initialize the scraper
+        scraper = LinkedInAlumniScraper(email, password)
+
+        # Start scraping with the provided limit
+        scraper.scrape_alumni(limit=limit)
+
+        # Get the results as a DataFrame
+        df = scraper.results
+
+        return jsonify({
+            "success": True,
+            "message": f"Successfully scraped {len(df)} LinkedIn profiles",
+            "data": df
+        })
+
+    except Exception as e:
+        # Ensure errors are returned as JSON
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/process', methods=['POST'])
 def process():
-    # Get uploaded files
-    file1 = request.files['file1']
-    file2 = request.files['file2']
+    # Get uploaded file
+    file1 = request.files.get('file1')
     
     # Check if threshold was provided, otherwise use default
     threshold = float(request.form.get('threshold', 0.5))
     
-    if not file1 or not file2:
-        return jsonify({"error": "Please upload both files"}), 400
+    if not file1:
+        return jsonify({"error": "Please upload the Excel file"}), 400
+    
+    # Get LinkedIn data from the session or from a direct upload
+    linkedin_data = session.get('linkedin_data')
+    
+    # If no LinkedIn data in session, check if file was uploaded
+    if not linkedin_data:
+        file2 = request.files.get('file2')
+        if file2 and file2.filename.endswith('.csv'):
+            # Read the CSV file
+            df2 = pd.read_csv(file2, header=None)
+        else:
+            return jsonify({"error": "No LinkedIn data available. Please scrape or upload a CSV file."}), 400
+    else:
+        # Convert session data to DataFrame
+        df2 = pd.DataFrame(linkedin_data)
+        # Make sure column order matches expected format for jaccard_similarity function
+        df2 = df2[['name', 'current_company', 'current_title']]
         
     try:
         # Read the first file (expecting Excel)
@@ -286,12 +107,6 @@ def process():
             df1 = pd.read_excel(file1, header=None)
         else:
             return jsonify({"error": "First file must be an Excel file (.xlsx or .xls)"}), 400
-            
-        # Read the second file (expecting CSV)
-        if file2.filename.endswith('.csv'):
-            df2 = pd.read_csv(file2, header=None)
-        else:
-            return jsonify({"error": "Second file must be a CSV file (.csv)"}), 400
         
         # Process the first dataframe
         if df1.iloc[0, 0] == 'Nama Mahasiswa':
@@ -303,7 +118,7 @@ def process():
             return jsonify({"error": "Excel file must contain 'Nama Mahasiswa' column"}), 400
             
         nama = df1['Nama Mahasiswa'].tolist()
-        namaa = df2[0].tolist()
+        namaa = df2[0].tolist()  # LinkedIn names from first column
         
         # Jaccard similarity calculation
         hasil = jaccard_similarity(nama, namaa, threshold, df2)
@@ -328,6 +143,51 @@ def process():
             "results": result_json,
             "columns": result_df.columns.tolist()
         })
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/download', methods=['POST'])
+def download():
+    # """Endpoint to download processed results as CSV or Excel"""
+    try:
+        data = request.json
+        if not data or 'results' not in data:
+            return jsonify({"error": "No data available for download"}), 400
+        
+        # Create a DataFrame from the results
+        df = pd.DataFrame(data['results'])
+        
+        # Create a bytes buffer for the file
+        buffer = io.BytesIO()
+        
+        # Determine format from request (default to Excel)
+        format_type = request.args.get('format', 'excel')
+        
+        if format_type == 'csv':
+            # Save as CSV
+            df.to_csv(buffer, index=False)
+            mimetype = 'text/csv'
+            filename = 'similarity_results.csv'
+        else:
+            # Save as Excel
+            df.to_excel(buffer, index=False)
+            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            filename = 'similarity_results.xlsx'
+        
+        # Seek to the beginning of the buffer
+        buffer.seek(0)
+        
+        # Create response with the file
+        from flask import send_file
+        return send_file(
+            buffer,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename
+        )
         
     except Exception as e:
         import traceback
